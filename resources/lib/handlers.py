@@ -1,27 +1,31 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
-import urllib
+from urllib.parse import urlencode
+
 import xbmc
 import xbmcgui
 import xbmcplugin
-from urlparse import urljoin
-from caching import CacheManager
-from extraction import Extractor
-from streaming import Stream
-from streaming import StreamError
-import logger
+import xbmcvfs
+
+from . import logger
+from .caching import CacheManager
+from .extraction import Extractor
+from .streaming import Stream
+from .streaming import StreamError
+
 
 class RequestHandler:
 	def __init__(self, addonhandle, addonname, addonbaseurl, parameters, settings):
 		self.addonname = addonname
-		self.baseurl = 'http://www.laola1.tv/' + settings.language() + '-' + settings.location() + '/'
+		self.baseurl = 'https://www.laola1.at/de/'
 		self.addonhandle = addonhandle
 		self.addonbaseurl = addonbaseurl
 		self.settings = settings
-		self.cacheManager = CacheManager(xbmc.translatePath('special://home/userdata/addon_data/' + self.addonname + '/cache'))
+		self.cacheManager = CacheManager(xbmcvfs.translatePath('special://profile/addon_data/' + self.addonname + '/cache'))
 
-		self.type = self.get_param(parameters, 'type')
+		self.request_type = self.get_param(parameters, 'type')
 		self.url = self.get_param(parameters, 'url')
+		self.video_id = self.get_param(parameters, 'video_id')
 
 		id = self.get_param(parameters, 'id')
 		if id is None:
@@ -30,7 +34,7 @@ class RequestHandler:
 			self.idParts = self.split_id_parts(id)
 
 	def build_url(self, query):
-		return self.addonbaseurl + '?' + urllib.urlencode(query)
+		return self.addonbaseurl + '?' + urlencode(query)
 
 	def split_id_parts(self, id):
 		sIds = id.split('-')
@@ -51,10 +55,11 @@ class RequestHandler:
 		if 'image' in folder:
 			image = folder['image']
 			if 'resource:' in image:
-				image = xbmc.translatePath('special://home/addons/' + self.addonname + '/resources/' + image[9:])
+				image = xbmcvfs.translatePath('special://home/addons/' + self.addonname + '/resources/' + image[9:])
 
-		li = xbmcgui.ListItem(folder['label'], thumbnailImage=image, iconImage='DefaultFolder.png')
-		parameters = { 'type': folder['type'], 'id': self.full_id(id) }
+		li = xbmcgui.ListItem(label=folder['label'])
+		li.setArt({'icon': image, 'thumb': image})
+		parameters = {'type': folder['type'], 'id': self.full_id(id)}
 		if 'url' in folder:
 			parameters['url'] = folder['url']
 
@@ -68,12 +73,38 @@ class RequestHandler:
 		if 'image' in video:
 			image = video['image']
 
-		li = xbmcgui.ListItem(video['label'], thumbnailImage=image, iconImage='DefaultVideo.png')
-		li.setProperty("IsPlayable","true")
-		li.setInfo('video', { 'genre': 'Sports' })
+		li = xbmcgui.ListItem(label=video['label'])
+		li.setArt({'icon': image, 'thumb': image})
+		li.setProperty('IsPlayable', 'true')
+		self.set_video_info(li, video)
+
+		parameters = {'type': 'video', 'url': video['url']}
+		if 'video_id' in video:
+			parameters['video_id'] = video['video_id']
+
 		xbmcplugin.addDirectoryItem(handle=self.addonhandle,
-			url=self.build_url({ 'type': 'video', 'url': video['url'] }),
+			url=self.build_url(parameters),
 			listitem=li, isFolder=False)
+
+	def set_video_info(self, list_item, video):
+		title = video.get('title') or video['label']
+		genre = video.get('genre') or 'Sports'
+		plot = video.get('plot') or ''
+		duration = video.get('duration')
+
+		try:
+			tag = list_item.getVideoInfoTag()
+			tag.setTitle(title)
+			tag.setGenres([genre])
+			if plot:
+				tag.setPlot(plot)
+			if duration:
+				tag.setDuration(duration)
+		except Exception:
+			info = {'title': title, 'genre': genre, 'plot': plot}
+			if duration:
+				info['duration'] = duration
+			list_item.setInfo('video', info)
 
 	def add_all_entries(self, entries):
 		id = 0
@@ -98,6 +129,7 @@ class RequestHandler:
 		logger.error('handle() method not overridden!')
 
 	def finish(self):
+		xbmcplugin.setContent(self.addonhandle, 'videos')
 		xbmcplugin.endOfDirectory(self.addonhandle, True, False, True)
 
 
@@ -129,10 +161,10 @@ class ChannelHandler(RequestHandler):
 
 		self.add_all_entries(channelsOrBlocks)
 
+
 class LiveBlockHandler(RequestHandler):
 	def handle(self):
-		block = self.cache_load()
-		extractor = Extractor(block['url'], self.settings)
+		extractor = Extractor(self.url, self.settings)
 		videos = extractor.get_live_videos()
 
 		livefilter = self.settings.livefilter()
@@ -142,13 +174,17 @@ class LiveBlockHandler(RequestHandler):
 
 		self.add_all_entries(videos)
 
+
 class BlockHandler(RequestHandler):
 	def handle(self):
 		if self.url is None:
 			block = self.cache_load()
 		else:
 			logger.debug('Load block from "{}"', self.url)
-			block = { 'url': self.url }
+			block = {'url': self.url}
+
+		if not block or not isinstance(block, dict):
+			block = {'url': Extractor(self.baseurl, self.settings).api_url('/videos')}
 
 		logger.debug('Block: {}', block)
 
@@ -160,15 +196,22 @@ class BlockHandler(RequestHandler):
 
 		self.add_all_entries(videos)
 
+
 class VideoHandler(RequestHandler):
 	def handle(self):
 		try:
-			stream = Stream(self.url)
+			stream = Stream(self.url, self.video_id)
 			li = xbmcgui.ListItem(path=stream.get_url())
-			li.setInfo( type="Video", infoLabels={ "Title": stream.get_title() } )
+			li.setMimeType('application/vnd.apple.mpegurl')
+			li.setContentLookup(False)
+			try:
+				tag = li.getVideoInfoTag()
+				tag.setTitle(stream.get_title())
+			except Exception:
+				li.setInfo(type='Video', infoLabels={'Title': stream.get_title()})
 			xbmcplugin.setResolvedUrl(self.addonhandle, True, li)
 		except StreamError as e:
-			xbmcgui.Dialog().notification('Laola1', e.message, xbmcgui.NOTIFICATION_ERROR, 5000, True)
+			xbmcgui.Dialog().notification('Laola1', str(e), xbmcgui.NOTIFICATION_ERROR, 5000, True)
 
 	def finish(self):
 		logger.debug('Finishing VideoHandler')

@@ -1,16 +1,28 @@
-﻿<?xml version="1.0" encoding="UTF-8"?>
-<addon id="plugin.video.laola1free" name="Laola1.tv free" version="1.1.8" provider-name="stipx">
+<?xml version="1.0" encoding="UTF-8"?>
+<addon id="plugin.video.laola1free" name="Laola1.tv free" version="2.0.0" provider-name="m0j01812">
 	<requires>
-		<import addon="xbmc.python" version="2.14.0"/>
-		<import addon="script.module.beautifulsoup4" version="4.3.2"/>
+		<import addon="xbmc.python" version="3.0.0"/>
 	</requires>
 	<extension point="xbmc.python.pluginsource" library="default.py">
 		<provides>video</provides>
 	</extension>
 	<extension point="xbmc.addon.metadata">
+		<reuselanguageinvoker>true</reuselanguageinvoker>
+		<summary lang="en_GB">LAOLA1 streaming and videos</summary>
+		<summary lang="de_DE">LAOLA1 Livestreams und Videos</summary>
+		<description lang="en_GB">Browse live, upcoming and recent LAOLA1 sports videos from Kodi. Playback uses the current LAOLA1 API endpoints and resolves free HLS streams directly in Kodi.</description>
+		<description lang="de_DE">Live, kommende und aktuelle LAOLA1-Sportvideos direkt in Kodi durchsuchen. Die Wiedergabe nutzt die aktuellen LAOLA1-API-Endpunkte und loest freie HLS-Streams direkt in Kodi auf.</description>
+		<disclaimer lang="en_GB">This is an unofficial Kodi add-on for LAOLA1 listings. Content availability, region access and playback rights are controlled by LAOLA1.</disclaimer>
+		<disclaimer lang="de_DE">Dies ist ein inoffizielles Kodi-Add-on fuer LAOLA1-Listen. Verfuegbarkeit, Regionenzugriff und Wiedergaberechte werden von LAOLA1 gesteuert.</disclaimer>
+		<language>de en</language>
 		<platform>all</platform>
-		<summary lang="en">Laola1 Streaming (Free user only)</summary>
-		<description lang="en">Provides streams from laola1.tv</description>
-		<license>GNU General Public License, v2</license>
+		<license>GPL-2.0-only; distributed under the GNU General Public License version 2 only. See LICENSE.txt.</license>
+		<forum>https://github.com/m0j01812/plugin.video.laola1free/issues</forum>
+		<website>https://www.laola1.at/</website>
+		<source>https://github.com/m0j01812/plugin.video.laola1free</source>
+		<news>2.0.0 - Kodi 21+ compatibility, Python 3 runtime support, current LAOLA1 API navigation, HLS stream resolving and updated settings metadata.</news>
+		<assets>
+			<icon>icon.png</icon>
+		</assets>
 	</extension>
 </addon>

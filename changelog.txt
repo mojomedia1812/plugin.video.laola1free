@@ -1,3 +1,10 @@
+2.0.0
+* Port to Kodi 21+ / Python 3
+* Replace legacy laola1.tv HTML scraping with current LAOLA1 JSON/video APIs
+* Resolve free LAOLA1 HLS streams through the current stream access endpoint
+* Modernize Kodi addon metadata, settings schema, ListItem artwork and cache handling
+* Complete addon metadata with license, website, source, support and disclaimer information
+
 1.1.8
 * Fix stream starts on newer Kodi version
 

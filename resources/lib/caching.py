@@ -1,16 +1,15 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
-import os
-import string
 import json
-import xbmc
-import xbmcvfs
-import logger
+import os
+
+from . import logger
+
 
 class CacheManager:
 	def __init__(self, path):
 		if not os.path.exists(path):
-			os.makedirs(path)
+			os.makedirs(path, exist_ok=True)
 		self.path = path
 
 	def clear(self):
@@ -19,14 +18,14 @@ class CacheManager:
 			try:
 				if os.path.isfile(filepath):
 					os.unlink(filepath)
-			except Exception, e:
+			except Exception as e:
 				logger.warn('Failed to clear cache {}', e)
 
 	def get_filepath(self, idParts):
 		joined = '-'.join(str(e) for e in idParts)
 		if joined:
 			joined = '-' + joined
-		return xbmc.validatePath(self.path + '/cache' + joined + '.json')
+		return os.path.join(self.path, 'cache' + joined + '.json')
 
 	def load(self, idParts):
 		idPartsNew = idParts[:-1]
@@ -41,19 +40,24 @@ class CacheManager:
 
 		logger.debug('Read from "{}"', filepath)
 
-		file = xbmcvfs.File(filepath, 'r')
-		obj = json.load(file)
-		file.close()
+		with open(filepath, 'r', encoding='utf-8') as file:
+			obj = json.load(file)
 
 		return self.get_child(obj, idParts[len(idPartsNew):])
 
-	def get_child(self, list, idParts):
-		logger.debug("id: {}, list: {}", idParts, list)
+	def get_child(self, items, idParts):
+		logger.debug("id: {}, list: {}", idParts, items)
 
-		if len(list) == 0:
+		if not idParts:
+			return items
+
+		if len(items) == 0:
 			return None
 
-		parent = list[idParts[0]]
+		try:
+			parent = items[idParts[0]]
+		except IndexError:
+			return None
 
 		if len(idParts) == 1:
 			return parent
@@ -63,10 +67,11 @@ class CacheManager:
 
 		return None
 
+	def store(self, obj, parentIdParts=None):
+		if parentIdParts is None:
+			parentIdParts = []
 
-	def store(self, obj, parentIdParts = []):
 		filepath = self.get_filepath(parentIdParts)
 
-		file = xbmcvfs.File(filepath, 'w')
-		json.dump(obj, file)
-		file.close()
+		with open(filepath, 'w', encoding='utf-8') as file:
+			json.dump(obj, file, ensure_ascii=False)

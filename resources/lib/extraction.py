@@ -1,303 +1,204 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
-import urllib2
-import string
-import time
 import re
-from urlparse import urljoin
-from bs4 import BeautifulSoup
-import logger
+from datetime import datetime
+from urllib.parse import parse_qsl
+from urllib.parse import urlencode
+from urllib.parse import urljoin
+from urllib.parse import urlsplit
+from urllib.parse import urlunsplit
+
+from . import logger
+from .net import get_json
+
+API_BASE = 'https://api.laola1.at/postings/api/v1'
+SITE_BASE = 'https://www.laola1.at/de/'
+VIDEOS_URL = API_BASE + '/videos'
+LIVESTREAMS_URL = API_BASE + '/livestreams'
+
+SPORT_FOLDERS = [
+	('Football', 'Fussball', 'resource:icons/soccer.png'),
+	('Basketball', 'Basketball', 'resource:icons/basketball.png'),
+	('Handball', 'Handball', 'resource:icons/volleyball.png'),
+	('Volleyball', 'Volleyball', 'resource:icons/volleyball.png'),
+	('Beach volleyball', 'Beachvolleyball', 'resource:icons/volleyball.png'),
+	('Ice hockey', 'Eishockey', 'resource:icons/hockey.png'),
+	('Tennis', 'Tennis', 'resource:icons/tennis.png'),
+	('Motorsport', 'Motorsport', 'resource:icons/motorsport.png'),
+]
+
+SPORT_FILTERS = {
+	'beachvolleyball': 'beachvolley',
+	'beachvolley': 'beachvolley',
+	'basketball': 'basketball',
+	'eishockey': 'icehockey',
+	'football': 'football',
+	'fussball': 'football',
+	'handball': 'handball',
+	'icehockey': 'icehockey',
+	'tabletennis': 'tabletennis',
+	'tischtennis': 'tabletennis',
+	'volleyball': 'volleyball',
+}
+
 
 class Extractor:
 	def __init__(self, baseurl, settings):
 		self.baseurl = baseurl
 		self.settings = settings
 
-	def get_soup(self, additional_remove=None):
-		if self.settings.htmlstripping():
-			remove = r'<head.*</head>|<!--.*?-->|<script.*?</script>|<footer.*?</footer>'
-			if additional_remove:
-				remove = remove + r'|' + additional_remove
+	def api_url(self, path, **query):
+		if not query:
+			return API_BASE + path
 
-			source = urllib2.urlopen(self.baseurl)
-			html = source.read()
-			beforelen = len(html)
-			html = re.sub(r'\s+', ' ', html, flags = re.MULTILINE)
-			html = re.sub(remove, '', html, flags = re.IGNORECASE)
-			logger.debug('HTML data length stripping - before: {} - after: {}', beforelen, len(html))
-
-			return BeautifulSoup(html, 'html.parser')
-		else:
-			logger.debug('No HTML data length stripping')
-			return BeautifulSoup(urllib2.urlopen(self.baseurl), 'html.parser')
+		return API_BASE + path + '?' + urlencode(query)
 
 	def get_text(self, item):
-		return item.get_text().strip().encode('utf-8')
+		return item.get_text().strip()
 
 	def get_url(self, url):
-		return urljoin(self.baseurl, url.encode('utf-8'))
+		return urljoin(self.baseurl, url)
 
-	def days1970(self, datetime):
-		# days since 1.1.1970 -> close enough
-		return 365 * (datetime.tm_year - 1970) + datetime.tm_yday
+	def get_channels(self):
+		channels = [
+			{
+				'label': 'Live and upcoming',
+				'url': LIVESTREAMS_URL,
+				'type': 'live-block',
+				'image': 'resource:icons/trophy.png'
+			},
+			{
+				'label': 'Latest videos',
+				'url': VIDEOS_URL,
+				'type': 'block',
+				'image': 'DefaultFolder.png'
+			}
+		]
 
-	def days_between(self, time1, time2):
-		return self.days1970(time2) - self.days1970(time1)
+		for label, search, image in SPORT_FOLDERS:
+			channels.append({
+				'label': label,
+				'url': self.api_url('/videos', search=search),
+				'type': 'block',
+				'image': image
+			})
 
-	def determine_icon(self, s):
-		if 'volley' in s or 'handball' in s:
-			return 'resource:icons/volleyball.png'
-		if 'football' in s:
-			return 'resource:icons/soccer.png'
-		if 'hockey' in s:
-			return 'resource:icons/hockey.png'
-		if 'basketball' in s:
-			return 'resource:icons/basketball.png'
-		if 'motorsports' in s:
-			return 'resource:icons/motorsport.png'
-		if 'tennis' in s:
-			return 'resource:icons/tennis.png'
-		if 'all' in s:
-			return 'resource:icons/gymnastics.png'
-		return 'DefaultFolder.png'
+		return channels
 
-	def extract_channels(self, nodes):
-		items = []
-		for child in nodes:
-			if child.span is not None and child.ul is not None:
-				children = self.extract_channels(child.ul.find_all('li', recursive=False))
-				if children:
-					item = {
-						'label': self.get_text(child.span),
-						'children': children,
-						'type': 'channel'
-					}
+	def get_blocks(self):
+		return self.get_videos()
 
-					if child.span.i:
-						item['image'] = self.determine_icon(' '.join(child.span.i['class']))
-						logger.debug('Using {} as icon for {}', item['image'], item['label'])
+	def get_live_videos(self):
+		logger.info('Fetching livestreams from "{}"', self.baseurl)
+		payload = get_json(self.baseurl)
+		items = payload.get('data', [])
+		livelimit = self.settings.livelimit()
+		videos = []
 
-					items.append(item)
+		for item in items:
+			start = self.parse_datetime(item.get('liveAt') or item.get('publishedAt'))
+			if livelimit and start:
+				days_from_now = (start.date() - datetime.now(start.tzinfo).date()).days
+				if days_from_now >= livelimit:
 					continue
 
-			if child.a is not None:
-				link = child.a
-				text = self.get_text(link)
-				if not text:
-					continue
+			video = self.convert_api_item(item, True)
+			if video:
+				videos.append(video)
 
-				item = {
-					'label': text,
-					'url': self.get_url(link['href']),
-					'type': 'channel'
-				}
+		return videos
 
-				if link.img:
-					item['image'] = self.get_url(link.img['src'])
-					logger.debug('Using {} as icon for {}', item['image'], item['label'])
+	def get_videos(self):
+		logger.info('Fetching videos from "{}"', self.baseurl)
+		payload = get_json(self.baseurl)
+		videos = []
 
-				items.append(item)
+		for item in payload.get('data', []):
+			video = self.convert_api_item(item, False)
+			if video:
+				videos.append(video)
 
-		return items
+		if payload.get('hasMorePages'):
+			videos.append({
+				'label': 'More...',
+				'url': self.next_page_url(self.baseurl, payload.get('currentPage', 1)),
+				'type': 'block'
+			})
 
-	def extract_live_block(self, parent):
-		link = self.first(parent, '.meta a.live')
+		return videos
 
-		return {
-			'label': self.get_text(link.span) + ' ([COLOR red]' + self.get_text(link.i) + '[/COLOR])',
-			'type': 'live-block',
-			'url': self.get_url(link['href'])
+	def convert_api_item(self, item, live_listing):
+		video_id = self.extract_video_id(item)
+		if not video_id:
+			logger.warn('Skipping video without content id: {}', item)
+			return None
+
+		title = item.get('title') or 'Untitled'
+		video = {
+			'label': self.format_label(item, title, live_listing),
+			'title': title,
+			'url': item.get('link') or (SITE_BASE + 'video/player/{}/'.format(video_id)),
+			'video_id': str(video_id),
+			'type': 'video',
+			'genre': item.get('videoSport') or 'Sports',
+			'plot': item.get('description') or ''
 		}
 
-	def extract_blocks(self, parent):
-		list = []
-		for node in parent.select('.teaser-wrapper'):
-			title = node.select('.teaser-title')[0]
+		if item.get('image'):
+			video['image'] = item['image']
 
-			if title.a is not None and title.a.h2 is not None:
-				item = {
-					'label': self.get_text(title.a.h2),
-					'url': self.get_url(title.a['href']),
-					'type': 'block'
-				}
+		if item.get('videoLength'):
+			video['duration'] = int(item['videoLength'])
 
-				imagenode = self.first(node, '.teaser-list .teaser img')
-				if imagenode:
-					item['image'] = self.get_url(imagenode['src'])
+		sport = self.normalize_sport(item.get('videoSport') or item.get('videoCategory') or '')
+		if sport:
+			video['sport'] = sport
 
-				list.append(item)
-				continue
+		return video
 
-			if title.h2 is not None:
-				children = self.extract_videos(node)
+	def extract_video_id(self, item):
+		entity_id = item.get('entityId') or ''
+		match = re.search(r'_(\d+)$', entity_id)
+		if match:
+			return match.group(1)
 
-				if children:
-					list.append({
-						'label': self.get_text(title.h2),
-						'children': children,
-						'image': self.get_url(node.select('.teaser-list .teaser img')[0]['src']),
-						'type': 'block'
-					})
-
-		return list
-
-	def extract_live_videos(self, parent):
-		now = time.localtime()
-		livelimit = self.settings.livelimit()
-
-		list = []
-		for item in parent.select('.list-day .item'):
-			live = False
-			h2s = item.select('.heading h2')
-			if not h2s:
-				logger.debug('No heading found for {}', self.minify(item))
-				continue
-
-			datas = item.select('.badge a > div')
-
-			if datas:
-				data = datas[0]
-
-				if int(data['data-sstatus'].encode('utf-8')) == 4:
-					live = True
-					date = '[COLOR red]LIVE[/COLOR] - '
-				else:
-					# 2016-1-30-20-30-00
-					date = data['data-nstreamstart'].encode('utf-8')
-					datetime = time.strptime(date, '%Y-%m-%d-%H-%M-%S')
-			else:
-				infos = item.select('.info > dl')
-
-				if not infos:
-					logger.debug('No time information for {}', self.minify(item))
-					continue
-
-				startlabel = infos[0].find(text='Streamstart:')
-				if not startlabel:
-					logger.debug('No start label in {}', self.minify(item))
-					continue;
-
-				start = startlabel.parent.find_next_siblings('dd', limit=1)[0]
-
-				# 19.03.2016 18:00
-				date = self.get_text(start).split(' ', 1)[-1]
-				datetime = time.strptime(date, '%d.%m.%Y %H:%M')
-
-			if not live:
-				daysfromnow = self.days_between(now, datetime)
-				if livelimit and daysfromnow >= livelimit:
-					break
-
-				if daysfromnow < 7:
-					date = '[B]' + time.strftime('%a, %H:%M', datetime) + '[/B] - '
-				else:
-					date = '[B]' + time.strftime('%a, %d.%m. - %H:%M', datetime) + '[/B] - '
-
-			video = {
-				'label': date + self.get_text(h2s[0]),
-				'url': self.get_url(item.select('a')[0]['href']),
-				'type': 'video'
-			}
-
-			image = self.first(item, '.logo img')
-			if image:
-				video['image'] = self.get_url(image['src'])
-
-			sport = self.first(item, '.sport i[class]')
-			if sport:
-				for cl in sport['class']:
-					if cl.startswith('ico-sports-'):
-						video['sport'] = cl[11:]
-
-			list.append(video)
-
-		return list
-
-	def extract_next_page_link(self, parent):
-		nexts = parent.select('.paging .next')
-		if nexts and 0 < len(nexts):
-			return {
-				'label': 'More...',
-				'url': self.get_url(nexts[0].find_parent('a')['href']),
-				'type': 'block'
-			}
+		link = item.get('link') or ''
+		match = re.search(r'/(?:player|embed)/(\d+)', link)
+		if match:
+			return match.group(1)
 
 		return None
 
-	def extract_videos(self, parent):
-		children = []
-		for teaser in parent.select('.teaser-list .teaser a'):
-			badge = self.first(teaser, '.date')
-			if not badge:
-				badge = self.first(teaser, '.badge')
+	def format_label(self, item, title, live_listing):
+		if live_listing and item.get('isLive'):
+			return '[COLOR red]LIVE[/COLOR] - ' + title
 
-			date = self.get_text(badge)
+		date = self.parse_datetime(item.get('liveAt') or item.get('publishedAt'))
+		if not date:
+			return title
 
-			if 'live' in badge['class']:
-				# Fri 19.02.2016  19:10
-				date = date[4:]
-				datetime = time.strptime(date, '%d.%m.%Y  %H:%M')
-				starttime = ' - [COLOR red]' + time.strftime('%H:%M', datetime) + '[/COLOR]'
-			else:
-				# 10.01.2016
-				datetime = time.strptime(self.get_text(badge), '%d.%m.%Y')
-				starttime = ''
+		if live_listing:
+			return '[B]' + date.strftime('%a, %d.%m. %H:%M') + '[/B] - ' + title
 
-			date = '[B]' + time.strftime('%a, %d.%m.%Y', datetime) + '[/B] - '
+		return '[B]' + date.strftime('%d.%m.%Y') + '[/B] - ' + title
 
-			children.append({
-				'label': date + self.get_text(teaser.find('p', recursive=False)) + starttime,
-				'url': self.get_url(teaser['href']),
-				'image': self.get_url(teaser.select('img')[0]['src']),
-				'type': 'video'
-			})
-
-		return children
-
-	def first(self, parent, selector):
-		nodes = parent.select(selector)
-
-		if len(nodes) == 0:
+	def parse_datetime(self, value):
+		if not value:
 			return None
 
-		return nodes[0]
-
-	def minify(self, input):
-		return re.sub('[\r\n ]+', ' ', str(input))
-
-	def get_channels(self):
-		soup = self.get_soup(r'<main.*?</main>')
 		try:
-			return [self.extract_live_block(soup)] + self.extract_channels(soup.select('.quick-browse .level1 > li'))
-		except:
-			logger.error('Failed to extract channels from url "{}" - html: {}', self.baseurl, self.minify(soup))
-			raise
+			return datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone()
+		except ValueError:
+			logger.warn('Could not parse date "{}"', value)
+			return None
 
-	def get_blocks(self):
-		soup = self.get_soup(r'<header.*?</header>')
-		try:
-			return self.extract_blocks(soup)
-		except:
-			logger.error('Failed to extract blocks from url "{}" - html: {}', self.baseurl, self.minify(soup))
-			raise
+	def normalize_sport(self, value):
+		key = value.lower().replace('ß', 'ss')
+		key = re.sub(r'[^a-z]', '', key)
+		return SPORT_FILTERS.get(key)
 
-	def get_live_videos(self):
-		soup = self.get_soup(r'<header.*?</header>')
-		try:
-			return self.extract_live_videos(soup)
-		except:
-			logger.error('Failed to extract live videos from url "{}" - html: {}', self.baseurl, self.minify(soup))
-			raise
-
-	def get_videos(self):
-		soup = self.get_soup(r'<header.*?</header>')
-		try:
-			videos = self.extract_videos(soup)
-			next = self.extract_next_page_link(soup)
-			if next:
-				videos.append(next)
-
-			return videos
-		except:
-			logger.error('Failed to extract videos from url "{}" - html: {}', self.baseurl, self.minify(soup))
-			raise
+	def next_page_url(self, url, current_page):
+		parts = urlsplit(url)
+		query = dict(parse_qsl(parts.query))
+		query['page'] = str(int(query.get('page', current_page)) + 1)
+		return urlunsplit((parts.scheme, parts.netloc, parts.path, urlencode(query), parts.fragment))

@@ -1,144 +1,169 @@
-﻿# -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
-import urllib2
 import re
-import string
-import random
-import time
-import json
-from urlparse import urljoin
-from bs4 import BeautifulSoup
-import logger
+from datetime import datetime
+from urllib.parse import urlencode
+from urllib.parse import urljoin
+
+from . import logger
+from .net import NetworkError
+from .net import get_json
+from .net import get_text
+from .net import post_json
+
+CONTENT_API = 'https://video.laola1.at/api/v3/contents'
+SITE_BASE = 'https://www.laola1.at/de/'
+
 
 class StreamError(Exception):
 	def __init__(self, message):
+		super().__init__(message)
 		self.message = message
 
+
 class Stream:
-	def __init__(self, url, min_bandwidth = 0, max_bandwidth = 999999999):
+	def __init__(self, url, video_id=None, min_bandwidth=0, max_bandwidth=999999999):
 		self.title = None
 		self.min_bandwidth = min_bandwidth
 		self.max_bandwidth = max_bandwidth
 
-		logger.debug('Get stream details url from "{}"', url)
-		url = self.get_details_url(url)
-		logger.debug('Get playlist url from "{}"', url)
-		self.url = self.get_playlist_url(url)
+		self.video_id = video_id or self.extract_video_id(url)
+		if not self.video_id:
+			self.video_id = self.extract_video_id_from_page(url)
+
+		if not self.video_id:
+			raise StreamError('Videoplayer not found!')
+
+		logger.debug('Get stream details for content id "{}"', self.video_id)
+		content = self.get_content(self.video_id)
+		self.title = self.extract_title(content) or self.title
+		self.url = self.get_playlist_url(self.video_id, content)
 		logger.debug('Playlist url is "{}"', self.url)
 
-	def get_soup(self, url):
-		source = urllib2.urlopen(url)
-		soup = BeautifulSoup(source, 'html.parser')
-		soup.current_url = source.geturl()
-		return soup
+	def extract_video_id(self, value):
+		if not value:
+			return None
 
-	def find_error_reason(self, soup):
-		countdown = soup.select('.live_countdown')
-		if countdown and countdown[0]['data-nstreamstart'] and not countdown[0].find_parent('div', {'class': 'tabcontent'}):
-			# 2016-3-19-20-30-00
-			date = countdown[0]['data-nstreamstart'].encode('utf-8')
-			datetime = time.strptime(date, '%Y-%m-%d-%H-%M-%S')
-			date = '[B]' + time.strftime('%a, %H:%M', datetime) + '[/B]'
-			return 'Stream not yet started![CR]Stream start: ' + date
+		value = str(value)
+		if value.isdigit():
+			return value
 
-		return 'Videoplayer not found!'
+		patterns = [
+			r'/contents/(\d+)',
+			r'/(?:player|embed)/(\d+)',
+			r'(?:video|livestream)_(\d+)',
+		]
+		for pattern in patterns:
+			match = re.search(pattern, value)
+			if match:
+				return match.group(1)
 
-	def regex_first(self, text, regex):
-		match = re.compile(regex, re.DOTALL).findall(text)
-		if match:
-			return match[0]
 		return None
 
-	def get_details_url(self, url):
-		source = urllib2.urlopen(url)
-		url = source.geturl()
-		content = source.read()
-		source.close()
+	def extract_video_id_from_page(self, url):
+		logger.debug('Search video id in page "{}"', url)
+		content = get_text(url)
+		match = re.search(r'data-video-id=["\'](\d+)["\']', content)
+		if match:
+			return match.group(1)
 
-		detailsurl = self.get_details_url_config(url, content)
-		if detailsurl:
-			return detailsurl
+		match = re.search(r'/video/player/(\d+)/', content)
+		if match:
+			return match.group(1)
 
-		detailsurl = self.get_details_url_default(url, content)
-		if detailsurl:
-			return detailsurl
+		title_match = re.search(r'<title>(.+?)</title>', content, re.DOTALL)
+		if title_match:
+			self.title = re.sub(r'\s+', ' ', title_match.group(1)).strip()
 
-		soup = BeautifulSoup(content, 'html.parser')
+		return None
 
-		if not self.title:
-			self.title = soup.select('title')[0].get_text().strip().encode('utf-8')
+	def get_content(self, video_id):
+		response = get_json('{}/{}'.format(CONTENT_API, video_id))
+		return response.get('data', {})
 
-		iframes = soup.select('iframe[src*=player]')
+	def extract_title(self, content):
+		translations = content.get('editorial', {}).get('translations', {})
+		for language in ('de', 'en'):
+			title = translations.get(language, {}).get('title')
+			if title:
+				return title
 
-		if len(iframes) != 1:
-			raise StreamError(self.find_error_reason(soup))
+		return None
 
-		return self.get_details_url(urljoin(url, iframes[0]['src']))
+	def get_playlist_url(self, video_id, content):
+		self.raise_if_not_started(content)
 
-	def get_details_url_config(self, url, content):
-		configurl = self.regex_first(content, 'configUrl: "(.+?)"')
-		if not configurl:
-			logger.info('"configUrl" not found in "{}"', url)
+		settings = self.get_player_settings(video_id)
+		stream_access = settings.get('streamAccess')
+		if not stream_access:
+			stream_access = settings.get('streamUrlProviderInfo', {}).get('data', {}).get('streamAccessUrl')
+
+		if not stream_access:
+			raise StreamError('Stream access URL could not be loaded.')
+
+		try:
+			response = post_json(stream_access, headers={
+				'Origin': 'https://www.laola1.at',
+				'Referer': SITE_BASE + 'video/player/{}/'.format(video_id)
+			})
+		except NetworkError as exc:
+			if exc.status == 401:
+				raise StreamError(self.authorization_error(content))
+			raise StreamError('Stream access failed: {}'.format(exc))
+
+		if response.get('status') != 'success':
+			raise StreamError(response.get('message') or 'Stream access failed.')
+
+		stream = response.get('data', {}).get('stream')
+		if not stream:
+			raise StreamError('Stream URL could not be loaded.')
+
+		return stream
+
+	def get_player_settings(self, video_id):
+		query = urlencode({
+			'portal': 'at',
+			'autoplay': 'true',
+			'enableProgressBar': 'true',
+			'enableTime': 'true',
+			'enableSeekForward': 'true',
+			'enableSeekBehind': 'true',
+			'showTitle': 'true',
+			'customDimension14': SITE_BASE + 'video/player/{}/'.format(video_id)
+		})
+		return get_json('{}/{}/player-settings?{}'.format(CONTENT_API, video_id, query))
+
+	def raise_if_not_started(self, content):
+		status = content.get('status', {})
+		if status.get('id') not in (1, 2):
+			return
+
+		start_time = self.parse_datetime(content.get('startTime'))
+		if start_time:
+			raise StreamError('Stream not yet started![CR]Stream start: ' + start_time.strftime('%a, %d.%m. %H:%M'))
+
+		raise StreamError('Stream not yet started!')
+
+	def authorization_error(self, content):
+		payment = content.get('payment') or {}
+		entitlements = payment.get('entitlements') or []
+		if entitlements:
+			return 'This stream requires a LAOLA1 login or subscription.'
+
+		status = content.get('status', {}).get('name')
+		if status:
+			return 'Stream is currently not available. Status: {}'.format(status)
+
+		return 'Stream is currently not available.'
+
+	def parse_datetime(self, value):
+		if not value:
 			return None
 
-		if not self.title:
-			self.title = self.regex_first(content, '<title>(.+?)</title>')
-
-		videoid = self.regex_first(content, 'videoid: "(.+?)"')
-		partnerid = self.regex_first(content, 'partnerid: "(.+?)"')
-		language = self.regex_first(content, 'language: "(.+?)"')
-
-		configurl = urljoin(url, configurl) + '?videoid=' + videoid + '&partnerid=' + partnerid + '&language=' + language + '&format=iphone'
-		logger.info('Full config url: {}', configurl)
-		source = urllib2.urlopen(configurl)
-		content = json.load(source)
-		source.close()
-
-		logger.info('StreamAccess: {}', content['video']['streamAccess'])
-
-		# Send POST request by passing the second parameter to Request(url, data)
-		source = urllib2.urlopen(urllib2.Request(content['video']['streamAccess'], ''))
-		content = json.load(source)
-		source.close()
-
-		return content['data']['stream-access'][0]
-
-	def get_details_url_default(self, url, content):
-		auth = self.regex_first(content, 'auth = "(.+?)"')
-		if not auth:
-			logger.info('"auth" not found in "{}"', url)
+		try:
+			return datetime.fromisoformat(value.replace('Z', '+00:00')).astimezone()
+		except ValueError:
 			return None
-
-		if not self.title:
-			self.title = self.regex_first(content, '<title>(.+?)</title>')
-
-		streamid = self.regex_first(content, 'streamid: "(.+?)"')
-		partnerid = self.regex_first(content, 'partnerid: "(.+?)"')
-		portalid = self.regex_first(content, 'portalid: "(.+?)"')
-		sprache = self.regex_first(content, 'sprache: "(.+?)"')
-		timestamp = ''.join(re.compile('<!--.*?([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2}):([0-9]{2}).*?-->', re.DOTALL).findall(content)[0])
-
-		hdvideourl = 'http://www.laola1.tv/server/hd_video.php?play='+streamid+'&partner='+partnerid+'&portal='+portalid+'&v5ident=&lang='+sprache
-
-		logger.debug('hd_video url is "{}"', hdvideourl)
-		soup = self.get_soup(hdvideourl)
-
-		return soup.videoplayer.url.text +'&timestamp='+timestamp+'&auth='+auth
-
-	def char_gen(self, size=1, chars=string.ascii_uppercase):
-		return ''.join(random.choice(chars) for x in range(size))
-
-	def get_playlist_url(self, url):
-		soup = self.get_soup(url)
-
-		if soup.data.token['status'] != '0':
-			raise StreamError(soup.data.token['comment'])
-
-		auth = soup.data.token['auth']
-		url = soup.data.token['url']
-
-		baseurl = url.replace('/z/', '/i/')
-		return urljoin(baseurl, 'master.m3u8?hdnea=' + auth + '&g=' + self.char_gen(12) + '&hdcore=3.8.0')
 
 	def get_title(self):
 		return self.title
@@ -148,15 +173,22 @@ class Stream:
 
 	def get_playlist(self):
 		streamurl = self.get_url()
-		source = urllib2.urlopen(streamurl)
-		master = source.read()
-		source.close()
+		master = get_text(streamurl)
 
 		playlist = '#EXTM3U\n'
+		lines = master.splitlines()
 
-		for header, bandwidth, url in re.compile('(BANDWIDTH=(.+?),.+?)\n(.+?)\n', re.DOTALL).findall(master):
-			bandwidth = int(bandwidth)
+		for index, line in enumerate(lines):
+			if not line.startswith('#EXT-X-STREAM-INF'):
+				continue
+
+			match = re.search(r'BANDWIDTH=(\d+)', line)
+			if not match or index + 1 >= len(lines):
+				continue
+
+			bandwidth = int(match.group(1))
+			url = lines[index + 1].strip()
 			if self.min_bandwidth < bandwidth and bandwidth <= self.max_bandwidth:
-				playlist += header + '\n' + urljoin(streamurl, url) + '\n'
+				playlist += line + '\n' + urljoin(streamurl, url) + '\n'
 
 		return playlist
