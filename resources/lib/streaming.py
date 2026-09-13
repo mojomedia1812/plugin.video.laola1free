@@ -7,6 +7,9 @@ from urllib.parse import urlencode
 from urllib.parse import urljoin
 
 from . import logger
+from .auth import AuthError
+from .auth import LaolaAuth
+from .auth import append_query
 from .net import NetworkError
 from .net import get_json
 from .net import get_text
@@ -23,8 +26,9 @@ class StreamError(Exception):
 
 
 class Stream:
-	def __init__(self, url, video_id=None, min_bandwidth=0, max_bandwidth=999999999):
+	def __init__(self, url, video_id=None, min_bandwidth=0, max_bandwidth=999999999, settings=None):
 		self.title = None
+		self.settings = settings
 		self.min_bandwidth = min_bandwidth
 		self.max_bandwidth = max_bandwidth
 
@@ -39,7 +43,7 @@ class Stream:
 		content = self.get_content(self.video_id)
 		self.title = self.extract_title(content) or self.title
 		self.url = self.get_playlist_url(self.video_id, content)
-		logger.debug('Playlist url is "{}"', self.url)
+		logger.debug('Playlist url resolved for content id "{}"', self.video_id)
 
 	def extract_video_id(self, value):
 		if not value:
@@ -102,6 +106,10 @@ class Stream:
 		if not stream_access:
 			raise StreamError('Stream access URL could not be loaded.')
 
+		if self.requires_account_access(content):
+			access_token = self.get_account_stream_access_token(video_id, content)
+			stream_access = append_query(stream_access, {'authorization_code': access_token})
+
 		try:
 			response = post_json(stream_access, headers={
 				'Origin': 'https://www.laola1.at',
@@ -120,6 +128,34 @@ class Stream:
 			raise StreamError('Stream URL could not be loaded.')
 
 		return stream
+
+	def requires_account_access(self, content):
+		return bool(self.entitlements(content))
+
+	def entitlements(self, content):
+		payment = content.get('payment') or {}
+		return payment.get('entitlements') or []
+
+	def get_account_stream_access_token(self, video_id, content):
+		if not self.settings:
+			raise StreamError('Please enter your LAOLA1 login details in the add-on settings.')
+
+		try:
+			token = LaolaAuth(self.settings).get_stream_access_token(video_id)
+		except AuthError as exc:
+			raise StreamError(str(exc))
+
+		if not token:
+			raise StreamError(self.account_access_error(content))
+
+		return token
+
+	def account_access_error(self, content):
+		entitlements = self.entitlements(content)
+		if len(entitlements) == 1 and entitlements[0].get('entitlement') == 'S780438211_AT':
+			return 'Please login to watch this video.'
+
+		return 'This stream is not included in your LAOLA1 package.'
 
 	def stream_access_error(self, error, settings):
 		try:
@@ -167,10 +203,8 @@ class Stream:
 		raise StreamError('Stream not yet started!')
 
 	def authorization_error(self, content):
-		payment = content.get('payment') or {}
-		entitlements = payment.get('entitlements') or []
-		if entitlements:
-			return 'This stream requires a LAOLA1 login or subscription.'
+		if self.entitlements(content):
+			return self.account_access_error(content)
 
 		status = content.get('status', {}).get('name')
 		if status:

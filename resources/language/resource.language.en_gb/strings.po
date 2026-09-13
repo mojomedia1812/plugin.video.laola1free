@@ -102,6 +102,42 @@ msgctxt "#30404"
 msgid "14 days"
 msgstr "14 days"
 
+msgctxt "#30500"
+msgid "Account"
+msgstr "Account"
+
+msgctxt "#30501"
+msgid "LAOLA1 username"
+msgstr "LAOLA1 username"
+
+msgctxt "#30502"
+msgid "LAOLA1 password"
+msgstr "LAOLA1 password"
+
+msgctxt "#30503"
+msgid "Session user"
+msgstr "Session user"
+
+msgctxt "#30504"
+msgid "Identity token"
+msgstr "Identity token"
+
+msgctxt "#30505"
+msgid "Access token"
+msgstr "Access token"
+
+msgctxt "#30506"
+msgid "Refresh token"
+msgstr "Refresh token"
+
+msgctxt "#30507"
+msgid "Stream session"
+msgstr "Stream session"
+
+msgctxt "#30508"
+msgid "Stream session start"
+msgstr "Stream session start"
+
 msgctxt "#31101"
 msgid "Debug"
 msgstr "Debug"

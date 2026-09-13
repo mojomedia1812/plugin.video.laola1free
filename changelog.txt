@@ -1,3 +1,8 @@
+2026.09.13.3
+* Add LAOLA1 account login through the current Cognito identity endpoint
+* Use account entitlement access tokens for account-only and subscription streams
+* Keep authentication tokens cached for reuse and refresh them before playback
+
 2026.09.13.2
 * Handle unavailable regional streams with an explicit failed resolver response
 * Read LAOLA1 stream-access error messages from the API response

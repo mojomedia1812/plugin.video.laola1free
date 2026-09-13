@@ -73,5 +73,104 @@
 				</setting>
 			</group>
 		</category>
+		<category id="account" label="30500">
+			<group id="1">
+				<setting id="username" type="string" label="30501" help="">
+					<level>0</level>
+					<default/>
+					<constraints>
+						<allowempty>true</allowempty>
+					</constraints>
+					<control type="edit" format="string">
+						<heading>30501</heading>
+					</control>
+				</setting>
+				<setting id="password" type="string" label="30502" help="">
+					<level>0</level>
+					<default/>
+					<constraints>
+						<allowempty>true</allowempty>
+					</constraints>
+					<control type="edit" format="string">
+						<heading>30502</heading>
+						<hidden>true</hidden>
+					</control>
+				</setting>
+			</group>
+			<group id="2">
+				<setting id="auth_username" type="string" label="30503" help="">
+					<level>4</level>
+					<visible>false</visible>
+					<default/>
+					<constraints>
+						<allowempty>true</allowempty>
+					</constraints>
+					<control type="edit" format="string">
+						<heading>30503</heading>
+						<hidden>true</hidden>
+					</control>
+				</setting>
+				<setting id="auth_id_token" type="string" label="30504" help="">
+					<level>4</level>
+					<visible>false</visible>
+					<default/>
+					<constraints>
+						<allowempty>true</allowempty>
+					</constraints>
+					<control type="edit" format="string">
+						<heading>30504</heading>
+						<hidden>true</hidden>
+					</control>
+				</setting>
+				<setting id="auth_access_token" type="string" label="30505" help="">
+					<level>4</level>
+					<visible>false</visible>
+					<default/>
+					<constraints>
+						<allowempty>true</allowempty>
+					</constraints>
+					<control type="edit" format="string">
+						<heading>30505</heading>
+						<hidden>true</hidden>
+					</control>
+				</setting>
+				<setting id="auth_refresh_token" type="string" label="30506" help="">
+					<level>4</level>
+					<visible>false</visible>
+					<default/>
+					<constraints>
+						<allowempty>true</allowempty>
+					</constraints>
+					<control type="edit" format="string">
+						<heading>30506</heading>
+						<hidden>true</hidden>
+					</control>
+				</setting>
+				<setting id="auth_stream_session_id" type="string" label="30507" help="">
+					<level>4</level>
+					<visible>false</visible>
+					<default/>
+					<constraints>
+						<allowempty>true</allowempty>
+					</constraints>
+					<control type="edit" format="string">
+						<heading>30507</heading>
+						<hidden>true</hidden>
+					</control>
+				</setting>
+				<setting id="auth_stream_session_start" type="string" label="30508" help="">
+					<level>4</level>
+					<visible>false</visible>
+					<default/>
+					<constraints>
+						<allowempty>true</allowempty>
+					</constraints>
+					<control type="edit" format="string">
+						<heading>30508</heading>
+						<hidden>true</hidden>
+					</control>
+				</setting>
+			</group>
+		</category>
 	</section>
 </settings>

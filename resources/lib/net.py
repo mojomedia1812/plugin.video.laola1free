@@ -58,6 +58,10 @@ def get_json(url, headers=None):
 
 def post_json(url, data=b'', headers=None):
 	post_headers = {'Accept': 'application/json'}
+	if isinstance(data, (dict, list)):
+		data = json.dumps(data)
+		if not headers or 'Content-Type' not in headers:
+			post_headers['Content-Type'] = 'application/json'
 	if headers:
 		post_headers.update(headers)
 	return json.loads(request(url, data=data, headers=post_headers))

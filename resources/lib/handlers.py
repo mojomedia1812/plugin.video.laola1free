@@ -200,7 +200,7 @@ class BlockHandler(RequestHandler):
 class VideoHandler(RequestHandler):
 	def handle(self):
 		try:
-			stream = Stream(self.url, self.video_id)
+			stream = Stream(self.url, self.video_id, settings=self.settings)
 			li = xbmcgui.ListItem(path=stream.get_url())
 			li.setMimeType('application/vnd.apple.mpegurl')
 			li.setContentLookup(False)
