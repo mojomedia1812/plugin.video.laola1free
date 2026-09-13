@@ -1,4 +1,4 @@
-2.0.0
+2026.09.13.1
 * Port to Kodi 21+ / Python 3
 * Replace legacy laola1.tv HTML scraping with current LAOLA1 JSON/video APIs
 * Resolve free LAOLA1 HLS streams through the current stream access endpoint
