@@ -1,7 +1,7 @@
 Laola1.tv free Kodi add-on
 
 License: GPL-2.0-only
-Source: https://github.com/m0j01812/plugin.video.laola1free
+Source: https://github.com/mojomedia1812/plugin.video.laola1free
 Maintainer: m0j01812
 
 This package is distributed under the GNU General Public License,

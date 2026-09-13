@@ -17,9 +17,9 @@
 		<language>de en</language>
 		<platform>all</platform>
 		<license>GPL-2.0-only; distributed under the GNU General Public License version 2 only. See LICENSE.txt.</license>
-		<forum>https://github.com/m0j01812/plugin.video.laola1free/issues</forum>
+		<forum>https://github.com/mojomedia1812/plugin.video.laola1free/issues</forum>
 		<website>https://www.laola1.at/</website>
-		<source>https://github.com/m0j01812/plugin.video.laola1free</source>
+		<source>https://github.com/mojomedia1812/plugin.video.laola1free</source>
 		<news>2.0.0 - Kodi 21+ compatibility, Python 3 runtime support, current LAOLA1 API navigation, HLS stream resolving and updated settings metadata.</news>
 		<assets>
 			<icon>icon.png</icon>
