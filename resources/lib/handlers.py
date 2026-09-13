@@ -211,7 +211,9 @@ class VideoHandler(RequestHandler):
 				li.setInfo(type='Video', infoLabels={'Title': stream.get_title()})
 			xbmcplugin.setResolvedUrl(self.addonhandle, True, li)
 		except StreamError as e:
+			li = xbmcgui.ListItem()
 			xbmcgui.Dialog().notification('Laola1', str(e), xbmcgui.NOTIFICATION_ERROR, 5000, True)
+			xbmcplugin.setResolvedUrl(self.addonhandle, False, li)
 
 	def finish(self):
 		logger.debug('Finishing VideoHandler')

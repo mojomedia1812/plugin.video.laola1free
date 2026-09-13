@@ -20,8 +20,22 @@ class Settings:
 		return self.choice('language', languages, 'de')
 
 	def location(self):
-		locations = ['int', 'de', 'at']
-		return self.choice('location', locations, 'at')
+		value = self.addon.getSetting('location')
+		if value == 'de':
+			return 'de'
+
+		if value in ('all', 'at', 'int', ''):
+			return 'all'
+
+		legacy_locations = ['int', 'de', 'at']
+		try:
+			location = legacy_locations[int(value)]
+			if location == 'de':
+				return 'de'
+		except (TypeError, ValueError, IndexError):
+			pass
+
+		return 'all'
 
 	def debug(self):
 		return self.addon.getSetting('debug') == 'true'

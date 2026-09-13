@@ -17,12 +17,11 @@
 				</setting>
 				<setting id="location" type="string" label="30204" help="">
 					<level>0</level>
-					<default>at</default>
+					<default>all</default>
 					<constraints>
 						<options>
-							<option label="30207">at</option>
+							<option label="30205">all</option>
 							<option label="30206">de</option>
-							<option label="30205">int</option>
 						</options>
 					</constraints>
 					<control type="list" format="string">

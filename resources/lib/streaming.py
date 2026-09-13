@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import json
 import re
 from datetime import datetime
 from urllib.parse import urlencode
@@ -109,7 +110,7 @@ class Stream:
 		except NetworkError as exc:
 			if exc.status == 401:
 				raise StreamError(self.authorization_error(content))
-			raise StreamError('Stream access failed: {}'.format(exc))
+			raise StreamError(self.stream_access_error(exc, settings))
 
 		if response.get('status') != 'success':
 			raise StreamError(response.get('message') or 'Stream access failed.')
@@ -119,6 +120,27 @@ class Stream:
 			raise StreamError('Stream URL could not be loaded.')
 
 		return stream
+
+	def stream_access_error(self, error, settings):
+		try:
+			payload = json.loads(error.body or '{}')
+		except ValueError:
+			payload = {}
+
+		code = payload.get('code')
+		if code:
+			messages = settings.get('customUserMessages') or {}
+			message = messages.get('error{}'.format(code))
+			if message:
+				return message
+
+		if payload.get('message'):
+			return payload['message']
+
+		if error.status:
+			return 'Stream access failed: HTTP {}'.format(error.status)
+
+		return 'Stream access failed.'
 
 	def get_player_settings(self, video_id):
 		query = urlencode({

@@ -1,3 +1,9 @@
+2026.09.13.2
+* Handle unavailable regional streams with an explicit failed resolver response
+* Read LAOLA1 stream-access error messages from the API response
+* Add an optional Germany-only availability filter while showing AT-only streams by default
+* Fill English setting translations so Kodi loads the language resource completely
+
 2026.09.13.1
 * Port to Kodi 21+ / Python 3
 * Replace legacy laola1.tv HTML scraping with current LAOLA1 JSON/video APIs

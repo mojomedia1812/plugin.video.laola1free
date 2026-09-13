@@ -19,20 +19,20 @@ msgid "General"
 msgstr "Allgemein"
 
 msgctxt "#30204"
-msgid "Location"
-msgstr "Standort"
+msgid "Availability filter"
+msgstr "Verfuegbarkeitsfilter"
 
 msgctxt "#30205"
-msgid "International"
-msgstr "International"
+msgid "Show all listed streams"
+msgstr "Alle gelisteten Streams anzeigen"
 
 msgctxt "#30206"
-msgid "Germany"
-msgstr "Deutschland"
+msgid "Only streams playable in Germany"
+msgstr "Nur in Deutschland abspielbare Streams"
 
 msgctxt "#30207"
-msgid "Austria"
-msgstr "Österreich"
+msgid "Only streams playable in Austria"
+msgstr "Nur in Oesterreich abspielbare Streams"
 
 msgctxt "#30211"
 msgid "Language"

@@ -12,6 +12,7 @@ from . import logger
 from .net import get_json
 
 API_BASE = 'https://api.laola1.at/postings/api/v1'
+CONTENT_API = 'https://video.laola1.at/api/v3/contents'
 SITE_BASE = 'https://www.laola1.at/de/'
 VIDEOS_URL = API_BASE + '/videos'
 LIVESTREAMS_URL = API_BASE + '/livestreams'
@@ -46,6 +47,7 @@ class Extractor:
 	def __init__(self, baseurl, settings):
 		self.baseurl = baseurl
 		self.settings = settings
+		self.content_cache = {}
 
 	def api_url(self, path, **query):
 		if not query:
@@ -103,7 +105,7 @@ class Extractor:
 					continue
 
 			video = self.convert_api_item(item, True)
-			if video:
+			if video and self.is_visible_for_location(video['video_id']):
 				videos.append(video)
 
 		return videos
@@ -115,7 +117,7 @@ class Extractor:
 
 		for item in payload.get('data', []):
 			video = self.convert_api_item(item, False)
-			if video:
+			if video and self.is_visible_for_location(video['video_id']):
 				videos.append(video)
 
 		if payload.get('hasMorePages'):
@@ -168,6 +170,44 @@ class Extractor:
 			return match.group(1)
 
 		return None
+
+	def is_visible_for_location(self, video_id):
+		try:
+			location = self.settings.location()
+		except AttributeError:
+			location = 'all'
+
+		if location != 'de':
+			return True
+
+		content = self.get_content(video_id)
+		if not content:
+			return True
+
+		return self.is_allowed_in_country(content, 'DE')
+
+	def get_content(self, video_id):
+		if video_id not in self.content_cache:
+			try:
+				response = get_json('{}/{}'.format(CONTENT_API, video_id))
+				self.content_cache[video_id] = response.get('data', {})
+			except Exception as exc:
+				logger.warn('Could not load content details for {}: {}', video_id, exc)
+				self.content_cache[video_id] = None
+
+		return self.content_cache[video_id]
+
+	def is_allowed_in_country(self, content, country):
+		restrictions = content.get('geoRestrictions') or []
+		if not restrictions:
+			return True
+
+		for restriction in restrictions:
+			countries = [item.strip().upper() for item in (restriction.get('isolist') or '').split(',')]
+			if country in countries:
+				return True
+
+		return False
 
 	def format_label(self, item, title, live_listing):
 		if live_listing and item.get('isLive'):
